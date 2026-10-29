@@ -61,7 +61,7 @@ for (const marker of markers.filter(m => m.label.endsWith(' km'))) {
 }
 for (const course of ['full', '10k']) {
     // Match browser DOM parsing: track points only, excluding GPX waypoint metadata.
-    context.gpxText = fs.readFileSync(`GPX/춘천_마라톤_${course}.gpx`, 'utf8').match(/<trkseg>[\s\S]*?<\/trkseg>/g).join('');
+    context.gpxText = fs.readFileSync(`GPX/2026_춘천_${course}.gpx`, 'utf8').match(/<trkseg>[\s\S]*?<\/trkseg>/g).join('');
     markers.length = 0;
     vm.runInContext(`mapInstance = null; gpxChartInstance = null;
         const points_${course} = RunruunElevationEngine.parseGpx(gpxText);
@@ -124,3 +124,28 @@ assert.equal(attribution.open,false);
 assert.ok(attribution.classes.has('maplibregl-compact'));
 assert.ok(!attribution.classes.has('maplibregl-compact-show'));
 console.log('PASS: attribution starts collapsed without removing source credits');
+
+// Every event/course combination must resolve to an existing local GPX.
+const courseFrames = Object.fromEntries(['courseMapFrame', 'courseMapFrame10k', 'courseMap10k'].map(id => [id, {getAttribute(){return this.src;}}]));
+let courseEvent;
+let courseRecords;
+const courseContext = vm.createContext({
+    selected: () => ({id: courseEvent}), state: {bibs: ['full', '10k']},
+    cache: () => courseRecords, $: id => courseFrames[id], encodeURIComponent,
+});
+vm.runInContext(fs.readFileSync('app.js', 'utf8').split('\n').find(line => line.startsWith('function renderCourseMaps()')), courseContext);
+for (const event of ['myresult-176', 'myresult-177']) {
+    courseEvent = event;
+    courseRecords = {[`${event}:full`]: {course: 'FULL'}, [`${event}:10k`]: {course: '10K'}};
+    for (const bibs of [['full'], ['10k'], ['full', '10k']]) {
+        courseContext.state.bibs = bibs;
+        vm.runInContext('renderCourseMaps()', courseContext);
+        assert.equal(courseFrames.courseMap10k.hidden, bibs.length !== 2);
+        for (const id of bibs.length === 2 ? ['courseMapFrame', 'courseMapFrame10k'] : ['courseMapFrame']) {
+            const path = new URLSearchParams(courseFrames[id].src.split('?')[1]).get('url');
+            assert.ok(fs.existsSync(path), path);
+            assert.ok(path.endsWith(id === 'courseMapFrame10k' || bibs[0] === '10k' ? '_10k.gpx' : '_full.gpx'));
+        }
+    }
+}
+console.log('PASS: both events resolve Full, 10K, and mixed maps to existing updated GPX files');
