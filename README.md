@@ -29,7 +29,7 @@
 
 - GitHub: https://github.com/sudo-engr/MarathonTracking
 - Production: https://marathontracking.sudoengr.workers.dev/
-- Short URL: https://tinyurl.com/maratrack/
+- Short URL: https://tinyurl.com/maratracking
 
 ## 코스의 GPX 데이터
 
