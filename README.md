@@ -16,6 +16,8 @@
 - 기록 검색: MyResult via Supabase Edge Function `myresult-search-v5`
 - 코스 데이터: 로컬 `GPX/` 파일, 실패 시 Supabase Edge Function `wari-jtbc-route` 폴백
 - 지도/고도 렌더링: `gpx-viewer.html`
+- 주자 위치 추정: `runner-prediction.js`, 시간별 날씨: `course-weather.js`
+- 추정 방식·가정·베를린 데이터 제한: [docs/runner-position-model.md](docs/runner-position-model.md)
 - 지도 렌더링에는 MapLibre GL JS와 OpenFreeMap을 사용합니다. 현재 테스트 스타일은 Bright이며, 지도별 전체화면과 코스 자동 맞춤을 지원합니다.
 - 배번과 수정 이름은 Supabase에 저장되고, 공유 링크에는 조회 토큰만 포함됩니다. 브라우저에는 초안과 작성자의 편집 토큰을 보관합니다.
 - 공유 링크는 30일간 유효하며, 공유받은 사람이 수정하면 별도 목록으로 저장합니다.

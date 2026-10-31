@@ -7,7 +7,7 @@ let serial=0, clipboard='', fail=false;
 const location={href:'https://test.example/?event=myresult-176&bibs=3909&names=old',search:''};
 const node=id=>{if(!nodes.has(id))nodes.set(id,{textContent:'',innerHTML:'',value:'',hidden:false,style:{},parentElement:{},addEventListener(){},getAttribute(){return ''},contentWindow:{postMessage(){}},replaceChildren(text){this.textContent=text},append(){}});return nodes.get(id)};
 const context=vm.createContext({
-  URL,URLSearchParams,Date,Promise,setTimeout,clearTimeout,window:{addEventListener(){}},
+  URL,URLSearchParams,Date,Promise,setTimeout,clearTimeout,setInterval(){},window:{addEventListener(){}},
   location,history:{replaceState(a,b,url){location.href=url;location.search=new URL(url).search}},
   localStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v)},
   document:{getElementById:node,addEventListener(){},createElement:()=>({}),querySelectorAll:()=>[]},
@@ -44,6 +44,14 @@ const run=code=>vm.runInContext(code,context);
   const count=calls.filter(c=>c.action==='create').length;
   await run('share()');assert.equal(calls.filter(c=>c.action==='create').length,count);
   assert.equal(run('state.list.editToken'),undefined);
+  // An already-open viewer reads additions from the same shared list without sharing again.
+  const original=database.get(owned.token);
+  database.set(owned.token,{...original,bibs:[...original.bibs,'2222']});
+  await run('syncSharedList()');
+  assert.ok(run("state.bibs.includes('2222')"));
+  assert.equal(run('state.list.token'),owned.token);
+  assert.equal(calls.filter(c=>c.action==='create').length,count);
+  database.set(owned.token,original);await run('syncSharedList()');
   run("state.names['myresult-176:3909']='수정본'");await run('saveState()');
   assert.notEqual(run('state.list.token'),owned.token);assert.equal(database.get(owned.token).names['3909'],'김현일');
   fail=true;run("state.bibs.push('777')");assert.equal(await run('saveState()'),false);

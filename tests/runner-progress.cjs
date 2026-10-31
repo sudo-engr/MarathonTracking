@@ -17,12 +17,14 @@ const context = vm.createContext({
     $: id => ({contentWindow: {postMessage: message => { posted[id] = message.runners; }}}),
 });
 vm.runInContext(parse + '\n' + sync + '\nsyncCourseMarkers()', context);
-assert.equal(posted.courseMapFrame[0].progress, 0);
-assert.equal(posted.courseMapFrame10k[0].progress, 0);
+assert.equal(posted.courseMapFrame[0].date, '2026-10-25');
+assert.equal(posted.courseMapFrame[0].total, '04:00:00');
+assert.equal(posted.courseMapFrame10k[0].course, ' 10K ');
 now = Date.parse('2026-10-25T12:00:00+09:00');
 vm.runInContext('syncCourseMarkers()', context);
-assert.equal(posted.courseMapFrame[0].progress, 1);
-assert.equal(posted.courseMapFrame10k[0].progress, 0.5);
+assert.equal(posted.courseMapFrame[0].segments[0].elapsed, '04:00:00');
+assert.equal(posted.courseMapFrame10k[0].segments[0].elapsed, '00:30:00');
+assert.equal(posted.courseMapFrame[0].progress, undefined);
 assert.equal((source.match(/function syncCourseMarkers\(/g) || []).length, 1);
 assert.ok(!source.includes('syncCourseMarkersOnly'));
-console.log('PASS: pre-race pins at start; race-day progress and Full/10K routing preserved');
+console.log('PASS: checkpoint data and race date reach predictor; Full/10K routing preserved');

@@ -30,13 +30,16 @@ class Map {
     fitBounds(bounds) { this.bounds=bounds; this.fitCount=(this.fitCount||0)+1; }
 }
 class LngLatBounds { constructor(a,b) { this.points=[a,b]; } extend(p) { this.points.push(p); return this; } }
+const runnerStatus = element();
 const context = vm.createContext({
     URLSearchParams, window: { location: { search: '' }, addEventListener() {} },
-    document: { getElementById: element, createElement: element, addEventListener() {} },
+    document: { getElementById: id => id === 'runner-status' ? runnerStatus : element(), createElement: element, addEventListener() {} },
     Chart: function (ctx, config) { this.options=config.options; this.resize = () => {}; },
     maplibregl: { Map, Marker, LngLatBounds, NavigationControl: class {}, FullscreenControl: class { constructor(options){this.options=options;this.events={};} on(event,callback){this.events[event]=callback;return this;} } },
     ResizeObserver: class { constructor(callback) { this.callback=callback; resizeObservers.push(this); } observe() {} },
-    setTimeout() {},
+    setTimeout() {}, setInterval() {},
+    RunnerPrediction: require("../runner-prediction.js"),
+    CourseWeather: {load: async () => null},
 });
 vm.runInContext(fs.readFileSync('runruun-elevation.js', 'utf8'), context);
 context.RunruunElevationEngine = context.window.RunruunElevationEngine;
@@ -50,11 +53,11 @@ assert.ok(script.includes('renderAnalysis(result, rawParsed);'));
 assert.equal(basemaps[0].style, 'https://tiles.openfreemap.org/styles/bright');
 console.log('PASS: GPX order defines start/finish; runner pins use distance-resampled points; viewer syntax valid');
 
-// A sparse segment crossing two milestones must place both at interpolated distances.
+// A sparse segment crossing several milestones must place all at interpolated distances.
 markers.length = 0;
 vm.runInContext(`mapInstance = null; gpxChartInstance = null;
     renderAnalysis({stats: {}, points: []}, [{lat: 0, lon: 0}, {lat: 0, lon: 0}, {lat: 0, lon: 0.225}]);`, context);
-assert.deepEqual(markers.filter(m => m.label.endsWith(' km')).map(m => m.label), ['10 km', '20 km']);
+assert.deepEqual(markers.filter(m => m.label.endsWith(' km')).map(m => m.label), ['5 km', '10 km', '15 km', '20 km', '25 km']);
 for (const marker of markers.filter(m => m.label.endsWith(' km'))) {
     const distance = context.RunruunElevationEngine.haversineDistanceMeters(0, 0, marker.point[1], marker.point[0]);
     assert.ok(Math.abs(distance - parseInt(marker.label) * 1000) < 0.01);
@@ -67,8 +70,8 @@ for (const course of ['full', '10k']) {
         const points_${course} = RunruunElevationEngine.parseGpx(gpxText);
         renderAnalysis({stats: {}, points: points_${course}}, points_${course});`, context);
     const labels = markers.filter(m => m.label.endsWith(' km')).map(m => m.label);
-    assert.deepEqual(labels, course === 'full' ? ['10 km', '20 km', '30 km', '40 km'] : []);
-    console.log(`PASS: Chuncheon ${course}: ${labels.join(', ') || 'no 10km crossing (GPX is 9.96km)'}`);
+    assert.deepEqual(labels, course === 'full' ? ['5 km', '10 km', '15 km', '20 km', '25 km', '30 km', '35 km', '40 km'] : ['5 km']);
+    console.log(`PASS: Chuncheon ${course}: ${labels.join(', ')}`);
 }
 
 vm.runInContext('mapInstance.loadCallback()', context);
@@ -149,3 +152,17 @@ for (const event of ['myresult-176', 'myresult-177']) {
     }
 }
 console.log('PASS: both events resolve Full, 10K, and mixed maps to existing updated GPX files');
+
+context.Date = {now: () => Date.parse('2026-10-31T08:36:00+09:00')};
+vm.runInContext(`
+    showRunners([{bib:'new',name:'테스트',date:'2026-10-31',course:'FULL',segments:[
+        {point:'출발',elapsed:'00:00:00',timeOfDay:'08:00:00'},
+        {point:'5K',elapsed:'00:30:00',timeOfDay:'08:30:00'}]}]);
+`, context);
+assert.ok(runnerStatus.textContent.includes('평균 6:00/km'));
+assert.ok(runnerStatus.textContent.includes('최근 구간 6:00/km'));
+assert.ok(runnerStatus.textContent.includes('추정 위치'));
+vm.runInContext("showRunners([{bib:'missing',date:'2026-10-31',segments:[]}])",context);
+assert.equal(vm.runInContext('runnerMarkers.length',context),0);
+assert.ok(runnerStatus.textContent.includes('통과 기록 부족'));
+console.log('PASS: real prediction drives runner pace/status; unknown checkpoint does not invent a pin');
