@@ -15,6 +15,7 @@ let state = loadState();
 let saveQueue = Promise.resolve();
 let shareBusy = false;
 let listSyncBusy = false;
+let refreshBusy = false;
 const $ = id => document.getElementById(id);
 let fullscreenMapFrame = null;
 let fullscreenMapScroll = null;
@@ -105,7 +106,8 @@ function recordUrl(value,fallback){try{const url=new URL(value);return /^https?:
 function card(e,b,r){const name=escapeHtml(state.names?.[`${e.id}:${b}`]||r.name);if(r.status!=='ok')return `<div class="result-card is-collapsed"><div class="result-head" aria-expanded="false"><strong>배번 ${b}</strong><span class="result-meta">${escapeHtml(r.status)}</span></div><p class="result-meta">${escapeHtml(r.message)}</p><a href="${e.url}${b}" target="_blank" rel="noreferrer">원본 사이트에서 확인 ↗</a></div>`;const rows=(r.segments||[]).map(s=>`<tr><td>${escapeHtml(s.point)}</td><td>${escapeHtml(s.timeOfDay)}</td><td>${escapeHtml(s.split)}</td><td>${escapeHtml(s.elapsed)}</td></tr>`).join('');return `<div class="result-card is-collapsed"><div class="result-head" aria-expanded="false"><strong>${name||`배번 ${b}`} <span class="bib-number">#${b}</span> <button class="name-edit" data-edit-name="${b}" aria-label="이름 수정">✎</button></strong><span class="result-meta">${e.source}</span></div><div class="result-grid"><div class="metric"><small>총기록</small><b>${escapeHtml(r.total||'—')}</b></div><div class="metric"><small>구간 수</small><b>${r.segments?.length||0}</b></div><div class="metric"><small>조회 시각</small><b>${new Date(r.fetchedAt).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'})}</b></div></div><div class="segment-table"><table><thead><tr><th>구간명</th><th>통과시간</th><th>구간기록</th><th>누적기록</th></tr></thead><tbody>${rows}</tbody></table></div><a href="${recordUrl(r.sourceUrl,e.url+b)}" target="_blank" rel="noreferrer">원본 기록 열기 ↗</a></div>`}
 async function callEdge(e,query){const r=await fetch(`${SUPABASE_URL}/myresult-search-v5`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({eventId:e.id.replace('myresult-',''),query})});const data=await r.json();if(!r.ok)throw new Error(data.error||`HTTP ${escapeHtml(r.status)}`);return data}
 async function waitForRequestSlot(){const wait=Math.max(0,MIN_REQUEST_INTERVAL-(Date.now()-lastExternalRequestAt));if(wait)await new Promise(resolve=>setTimeout(resolve,wait));lastExternalRequestAt=Date.now()}
-async function queryBib(e,b){const c=cache();const key=`${e.id}:${b}`;if(c[key]?.status==='ok'&&Date.now()-c[key].fetchedAt<CACHE_TTL)return c[key];try{await waitForRequestSlot();const data=await callEdge(e,b);const result={status:'ok',name:data.name,course:data.course,total:data.total,segments:data.segments||[],sourceUrl:data.sourceUrl,fetchedAt:Date.now()};c[key]=result;localStorage.setItem(CACHE_KEY,JSON.stringify(c));return result}catch(error){const result={status:'error',message:error.message,sourceUrl:e.url+b,fetchedAt:Date.now()};c[key]=result;localStorage.setItem(CACHE_KEY,JSON.stringify(c));return result}}
+async function queryBib(e,b,maxAge=CACHE_TTL){const key=`${e.id}:${b}`,previous=cache()[key];if(previous?.status==='ok'&&Date.now()-previous.fetchedAt<maxAge)return previous;let result;try{await waitForRequestSlot();const data=await callEdge(e,b);result={status:'ok',name:data.name,course:data.course,total:data.total,segments:data.segments||[],sourceUrl:data.sourceUrl,fetchedAt:Date.now()}}catch(error){result=previous?.status==='ok'?{...previous,refreshError:error.message}:{status:'error',message:error.message,sourceUrl:e.url+b,fetchedAt:Date.now()}}const c=cache();c[key]=result;localStorage.setItem(CACHE_KEY,JSON.stringify(c));return result}
+
 async function syncSharedList(){
   const list=state.list;
   if(listSyncBusy||!list?.token||list.editToken)return;
@@ -120,7 +122,28 @@ async function syncSharedList(){
   }catch{$('saveStatus').textContent='공유 목록 갱신 실패. 네트워크 연결 또는 링크 만료 여부를 확인하세요.'}
   finally{listSyncBusy=false}
 }
-async function refresh(){await syncSharedList();const e=selected();if(!e||!state.bibs.length)return;$('status').textContent=`${state.bibs.length}개 배번을 순차 확인하는 중…`;for(const b of state.bibs){const c=cache();c[`${e.id}:${b}`]={status:'loading',fetchedAt:Date.now()};localStorage.setItem(CACHE_KEY,JSON.stringify(c));renderResults();await queryBib(e,b);renderResults()}$('status').textContent='조회가 완료되었습니다. 자동 연동이 없는 기록은 원본 링크에서 확인하세요.'}
+async function refresh({automatic=false}={}){
+  if(refreshBusy)return;
+  refreshBusy=true;
+  try{
+    await syncSharedList();
+    const e=selected();
+    if(!e||!state.bibs.length)return;
+    const raceStart=Date.parse(e.date+'T00:00:00+09:00');
+    if(automatic&&(document.hidden||new URLSearchParams(location.search).has('mock')||Date.now()<raceStart||Date.now()>=raceStart+86400000))return;
+    if(!automatic)$('status').textContent=`${state.bibs.length}개 배번을 순차 확인하는 중…`;
+    let failed=false;
+    for(const b of [...state.bibs]){
+      if(state.eventId!==e.id)break;
+      if(!state.bibs.includes(b))continue;
+      const record=await queryBib(e,b,automatic?60000:0);
+      failed ||= record.status!=='ok'||!!record.refreshError;
+      if(state.eventId===e.id)renderResults();
+    }
+    if(!automatic&&state.eventId===e.id)$('status').textContent=failed?'일부 기록을 갱신하지 못했습니다. 기존 통과 기록을 유지합니다.':'조회가 완료되었습니다. 자동 연동이 없는 기록은 원본 링크에서 확인하세요.';
+  }finally{refreshBusy=false}
+}
+
 async function share(){
   if(shareBusy||!selected()||!state.bibs.length)return;
   shareBusy=true;$('shareBtn').disabled=true;
@@ -175,4 +198,5 @@ async function initialize(){
 if(new URLSearchParams(location.search).has('mock')){watchCourseMap()}else{initialize()}
 
 setInterval(()=>{if(!document.hidden)syncSharedList()},30000);
-document.addEventListener('visibilitychange',()=>{if(!document.hidden)syncSharedList()});
+setInterval(()=>refresh({automatic:true}),60000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)refresh({automatic:true})});
