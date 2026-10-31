@@ -190,7 +190,6 @@
         <div id="step-done" class="loading-step pending"><span class="step-icon"></span>완료</div>
     </div>
     <div id="gpx-map" class="gpx-map" style="display: none;"></div>
-    <div id="runner-status" style="color:#334139;font-size:14px;line-height:1.6;padding:12px 4px;white-space:pre-line;overflow-wrap:anywhere;" aria-live="polite"></div>
     <div id="gpx-chart-container" class="gpx-chart-container" style="display: none;">
         <canvas id="gpx-elevation-chart"></canvas>
     </div>
@@ -248,11 +247,6 @@
         showRunners(latestRunners);
         if (latestRunners[0]?.date !== date) updateWeather();
     }
-    function formatPace(value) {
-        if (!Number.isFinite(value) || value <= 0) return '—';
-        const seconds = Math.round(value);
-        return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}/km`;
-    }
     function createMapMarker(point, label, color, kind = 'course', number = '') {
         const element = document.createElement('div');
         element.className = `map-pin ${kind}`;
@@ -270,7 +264,6 @@
         latestRunners = runners;
         if (!mapInstance || !routePath.length) return;
         runnerMarkers.forEach(marker => marker.remove());
-        const descriptions = [];
         runnerMarkers = runners.map((runner, index) => {
             const prediction = runner.date && predictionRoute
                 ? RunnerPrediction.predict(runner, predictionRoute, weatherAt, Date.now())
@@ -278,13 +271,10 @@
             const point = routePath[Math.min(routePath.length - 1, Math.max(0, Math.round((prediction.progress || 0) * (routePath.length - 1))))];
             if (!point) return null;
             const name = `${runner.name || '배번'} #${runner.bib}`;
-            if (runner.date) descriptions.push(`${index + 1}. ${name} · ${({prerace:'출발 전',unknown:'통과 기록 부족',finished:'완주 확인',stale:'기록 지연',checkpoint:'통과 기록',running:'이동 추정',slowing:'페이스 저하',steady:'페이스 유지',speeding:'페이스 상승'})[prediction.state] || prediction.state} · 평균 ${formatPace(prediction.averagePace)} · 최근 구간 ${formatPace(prediction.segmentPace)} · ${prediction.segmentPace && prediction.averagePace ? (prediction.segmentPace > prediction.averagePace * 1.05 ? '페이스 저하' : prediction.segmentPace < prediction.averagePace * 0.95 ? '페이스 상승' : '페이스 유지') + ' · ' : ''}${prediction.estimated ? '추정 위치' : '확인 기록 기준'} · 고도 ${prediction.elevationApplied ? '반영' : '미적용'} · 날씨 ${weatherLoading ? '조회 중' : prediction.weatherApplied ? '반영' : '미적용'}`);
             if (prediction.state === 'unknown') return null;
             const color = runnerPinColors[index % runnerPinColors.length];
             return createMapMarker(point, name, color, 'runner', String(index + 1));
         }).filter(Boolean);
-        const status = document.getElementById('runner-status');
-        if (status) status.textContent = descriptions.length ? descriptions.join('\n') + '\n날씨: Open-Meteo 코스 출발점 시간별 모델값 · 환경 보정은 실험적 추정 · 베를린 비교 미적용(재사용 가능한 데이터 미확보)' : '';
     }
     window.addEventListener('message', event => {
         if (event.source !== window.parent || event.data?.type !== 'marathon-runners' || !Array.isArray(event.data.runners)) return;

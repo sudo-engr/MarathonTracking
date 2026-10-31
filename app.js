@@ -141,7 +141,7 @@ async function importShare(){
     const owned=state.list?.token===token&&state.list.editToken?state.list:null;
     state={eventId:data.eventId,bibs:data.bibs,names:Object.fromEntries(Object.entries(data.names).map(([bib,name])=>[`${data.eventId}:${bib}`,name])),list:owned||{eventId:data.eventId,token,expiresAt:data.expiresAt}};
     persistLocalState();history.replaceState(null,'',listUrl(token));
-    $('saveStatus').textContent=owned?'Supabase에서 저장된 목록을 불러왔습니다.':'공유 목록입니다. 수정하면 내 목록으로 별도 저장됩니다.';
+    $('saveStatus').textContent='';
     return true;
   }
   const id=params.get('event'),bibs=(params.get('bibs')||'').split(',').filter(b=>/^\d{1,8}$/.test(b)).slice(0,50);

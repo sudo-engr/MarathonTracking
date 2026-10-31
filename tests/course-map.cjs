@@ -30,10 +30,9 @@ class Map {
     fitBounds(bounds) { this.bounds=bounds; this.fitCount=(this.fitCount||0)+1; }
 }
 class LngLatBounds { constructor(a,b) { this.points=[a,b]; } extend(p) { this.points.push(p); return this; } }
-const runnerStatus = element();
 const context = vm.createContext({
     URLSearchParams, window: { location: { search: '' }, addEventListener() {} },
-    document: { getElementById: id => id === 'runner-status' ? runnerStatus : element(), createElement: element, addEventListener() {} },
+    document: { getElementById: element, createElement: element, addEventListener() {} },
     Chart: function (ctx, config) { this.options=config.options; this.resize = () => {}; },
     maplibregl: { Map, Marker, LngLatBounds, NavigationControl: class {}, FullscreenControl: class { constructor(options){this.options=options;this.events={};} on(event,callback){this.events[event]=callback;return this;} } },
     ResizeObserver: class { constructor(callback) { this.callback=callback; resizeObservers.push(this); } observe() {} },
@@ -159,10 +158,8 @@ vm.runInContext(`
         {point:'출발',elapsed:'00:00:00',timeOfDay:'08:00:00'},
         {point:'5K',elapsed:'00:30:00',timeOfDay:'08:30:00'}]}]);
 `, context);
-assert.ok(runnerStatus.textContent.includes('평균 6:00/km'));
-assert.ok(runnerStatus.textContent.includes('최근 구간 6:00/km'));
-assert.ok(runnerStatus.textContent.includes('추정 위치'));
 vm.runInContext("showRunners([{bib:'missing',date:'2026-10-31',segments:[]}])",context);
 assert.equal(vm.runInContext('runnerMarkers.length',context),0);
-assert.ok(runnerStatus.textContent.includes('통과 기록 부족'));
-console.log('PASS: real prediction drives runner pace/status; unknown checkpoint does not invent a pin');
+assert.equal(vm.runInContext('runnerMarkers.length',context),0);
+assert.ok(!html.includes('runner-status'));
+console.log('PASS: prediction drives pins without status prose; unknown checkpoint does not invent a pin');
